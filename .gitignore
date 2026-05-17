@@ -1,0 +1,43 @@
+# === DATASET / IMÁGENES ===
+# Ignora toda la carpeta de imágenes que estás recopilando
+dataset/
+*.jpg
+*.jpeg
+*.png
+
+# === PYTHON ===
+# Archivos compilados y caché de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.mypy_cache/
+
+# === ARDUINO / ESP32 ===
+# Archivos temporales de compilación
+build/
+bin/
+*.elf
+*.bin
+*.hex
+
+# === CONFIGURACIÓN DE EDITORES (IDE) ===
+# Visual Studio Code
+.vscode/
+!.vscode/extensions.json
+
+# PyCharm / IntelliJ
+.idea/
+
+# Archivos del sistema operativo (p. ej. miniaturas de Windows)
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
