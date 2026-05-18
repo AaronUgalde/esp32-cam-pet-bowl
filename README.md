@@ -1,37 +1,4 @@
-```python
-readme_content = """# Sistema de Monitoreo de Plato de Mascotas con ESP32-CAM y Deep Learning (CNN)
 
-Este repositorio contiene un sistema completo de Visión por Computadora y Edge-AI diseñado para clasificar el estado de un plato para perro (vacío o lleno - `empty` o `full`). El sistema está dividido en tres componentes principales: firmware embebido para adquisición y transmisión de imágenes, un script de automatización serial para control de visualización/recolección de datos y una tubería (*pipeline*) de entrenamiento para una Red Neuronal Convolucional (CNN).
-
-## 🚀 Arquitectura General del Sistema
-
-
-```
-
-```text
-Archivo README.md generado con éxito.
-
-
-```
-
-[ ESP32-CAM ] --(Streaming Serial @ 1.5 Mbps)--> [ Python / OpenCV Script ]
-|
-+--------------+--------------+
-|                             |
-(Modo Captura: Teclas E/F)      (Modo Inferencia: Tecla P)
-v                             v
-[ dataset/empty ]             [ modelo_bowl_perro.keras ]
-[ dataset/full  ]                      |
-|                             v
-+---> [ Entrenamiento CNN ] --+
-
-```
-
----
-
-## 📂 Estructura de Archivos Recomendada
-
-Se recomienda organizar el proyecto de la siguiente manera:
 ```text
 📦 proyecto-plato-esp32cam
  ┣ 📂 dataset
