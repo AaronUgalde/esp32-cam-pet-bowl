@@ -24,8 +24,8 @@ print("Teclas: e = empty, f = full, q = salir")
 
 buffer = bytearray()
 latest_img = None
-counter_empty = 0
-counter_full = 0
+counter_empty = 41
+counter_full = 31
 
 def save_image(img, label):
     global counter_empty, counter_full
