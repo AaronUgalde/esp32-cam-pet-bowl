@@ -15,3 +15,6 @@ TG_CHAT_ID = "000000000"
 # Puerto serial del ESP32 (para test_serial.py y test_model.py)
 SERIAL_PORT = "COM7"      # Windows: COM7 | Linux/Mac: /dev/ttyUSB0
 SERIAL_BAUD = 1500000
+
+# Segundos entre predicciones automáticas en modo --headless
+PREDICT_INTERVAL = 30

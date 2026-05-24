@@ -3,8 +3,16 @@ import numpy as np
 import requests
 import tensorflow as tf
 import threading
+import argparse
+import time
 
-from config import URL_CAM, TG_TOKEN, TG_CHAT_ID
+from config import URL_CAM, TG_TOKEN, TG_CHAT_ID, PREDICT_INTERVAL
+
+# ── Argumentos ────────────────────────────────────────────────────────────────
+parser = argparse.ArgumentParser(description="ESP32-CAM Pet Bowl Monitor")
+parser.add_argument("--headless", action="store_true",
+                    help="Sin ventana: predice automáticamente cada PREDICT_INTERVAL segundos")
+args = parser.parse_args()
 
 # ── Configuración ──────────────────────────────────────────────────────────────
 MODEL_PATH  = "modelo_bowl_perro.keras"
@@ -18,12 +26,17 @@ model = tf.keras.models.load_model(MODEL_PATH)
 _dummy = tf.zeros((1, 120, 160, 3), dtype=tf.float32)
 model(_dummy, training=False)
 print("Modelo listo.")
-print("Presiona  [ESPACIO]  para predecir  |  [Q]  para salir")
 
-# ── Estado compartido entre threads ───────────────────────────────────────────
+if args.headless:
+    print(f"Modo headless — predicción automática cada {PREDICT_INTERVAL}s  |  Ctrl+C para salir")
+else:
+    print("Modo display  — [ESPACIO] predecir  |  [Q] salir")
+
+# ── Estado compartido ─────────────────────────────────────────────────────────
 _lock       = threading.Lock()
 _latest_raw = None
 _stop       = False
+
 
 # ── Thread de captura ─────────────────────────────────────────────────────────
 def fetch_loop():
@@ -42,83 +55,103 @@ fetch_thread.start()
 
 # ── Telegram ──────────────────────────────────────────────────────────────────
 def send_telegram(label, prob):
-    emoji   = "🟢" if label == "full" else "🔴"
-    estado  = "lleno" if label == "full" else "vacío"
-    mensaje = f"{emoji} *Plato de la mascota:* {estado}\nConfianza: {prob*100:.1f}%"
+    emoji  = "🟢" if label == "full" else "🔴"
+    estado = "lleno" if label == "full" else "vacío"
+    msg    = f"{emoji} *Plato de la mascota:* {estado}\nConfianza: {prob*100:.1f}%"
     try:
         requests.post(TG_URL, json={
-            "chat_id":    TG_CHAT_ID,
-            "text":       mensaje,
-            "parse_mode": "Markdown"
+            "chat_id": TG_CHAT_ID, "text": msg, "parse_mode": "Markdown"
         }, timeout=5)
         print("[Telegram] Mensaje enviado.")
     except Exception as e:
-        print(f"[Telegram] Error al enviar: {e}")
+        print(f"[Telegram] Error: {e}")
 
 def notify(label, prob):
-    t = threading.Thread(target=send_telegram, args=(label, prob), daemon=True)
-    t.start()
+    threading.Thread(target=send_telegram, args=(label, prob), daemon=True).start()
 
 # ── Inferencia ────────────────────────────────────────────────────────────────
+def get_frame():
+    """Devuelve el frame más reciente decodificado, o None si no hay."""
+    with _lock:
+        raw = _latest_raw
+    if raw is None:
+        return None
+    img = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
+    return img
+
 def predict(img_bgr):
     tensor = tf.expand_dims(tf.cast(img_bgr, tf.float32), axis=0)
     prob   = float(model(tensor, training=False)[0, 0])
     label  = CLASS_NAMES[int(prob >= THRESHOLD)]
     return label, prob
 
-# ── Banner cacheado ───────────────────────────────────────────────────────────
-_banner      = None
-_banner_pred = None
+def run_prediction(img):
+    label, prob = predict(img)
+    ts = time.strftime("%H:%M:%S")
+    print(f"[{ts}] Predicción: {label.upper()}  —  confianza: {prob*100:.1f}%")
+    notify(label, prob)
+    return label, prob
 
-def get_banner(width, label, prob):
-    global _banner, _banner_pred
-    if _banner_pred == (label, prob) and _banner is not None:
-        return _banner
-    color  = (0, 200, 0) if label == "full" else (0, 0, 220)
-    text   = f"{label.upper()}  {prob*100:.1f}%"
-    franja = np.zeros((38, width, 3), dtype=np.uint8)
-    cv2.putText(franja, text, (8, 28), cv2.FONT_HERSHEY_SIMPLEX,
-                0.9, color, 2, cv2.LINE_AA)
-    _banner      = franja
-    _banner_pred = (label, prob)
-    return _banner
+# ── Banner (solo modo display) ────────────────────────────────────────────────
+_banner, _banner_pred = None, None
 
 def apply_banner(img, label, prob):
-    out    = img.copy()
-    banner = get_banner(img.shape[1], label, prob)
-    out[0:38, :] = cv2.addWeighted(out[0:38, :], 0.4, banner, 1.0, 0)
+    global _banner, _banner_pred
+    if _banner_pred != (label, prob):
+        color  = (0, 200, 0) if label == "full" else (0, 0, 220)
+        franja = np.zeros((38, img.shape[1], 3), dtype=np.uint8)
+        cv2.putText(franja, f"{label.upper()}  {prob*100:.1f}%",
+                    (8, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2, cv2.LINE_AA)
+        _banner, _banner_pred = franja, (label, prob)
+    out = img.copy()
+    out[0:38, :] = cv2.addWeighted(out[0:38, :], 0.4, _banner, 1.0, 0)
     return out
 
-# ── Bucle principal ───────────────────────────────────────────────────────────
-last_prediction = None
 
-while True:
-    with _lock:
-        raw = _latest_raw
-
-    if raw is None:
-        if cv2.waitKey(1) & 0xFF == ord("q"):
+# ── Bucle headless ────────────────────────────────────────────────────────────
+def loop_headless():
+    print("Esperando primer frame…")
+    while True:
+        img = get_frame()
+        if img is not None:
             break
-        continue
+        time.sleep(0.2)
 
-    img_np = np.frombuffer(raw, dtype=np.uint8)
-    img    = cv2.imdecode(img_np, cv2.IMREAD_COLOR)
+    print("Primer frame recibido. Iniciando ciclo de predicción.")
+    try:
+        while True:
+            img = get_frame()
+            if img is not None:
+                run_prediction(img)
+            time.sleep(PREDICT_INTERVAL)
+    except KeyboardInterrupt:
+        pass
 
-    if img is None:
-        continue
+# ── Bucle display ─────────────────────────────────────────────────────────────
+def loop_display():
+    last_prediction = None
+    while True:
+        img = get_frame()
+        if img is None:
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
+            continue
 
-    display = apply_banner(img, *last_prediction) if last_prediction else img
-    cv2.imshow("ESP32-CAM Pet Bowl", display)
+        display = apply_banner(img, *last_prediction) if last_prediction else img
+        cv2.imshow("ESP32-CAM Pet Bowl", display)
 
-    key = cv2.waitKey(1) & 0xFF
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord("q"):
+            break
+        elif key == ord(" "):
+            last_prediction = run_prediction(img)
 
-    if key == ord("q"):
-        break
-    elif key == ord(" "):
-        label, prob = predict(img)
-        last_prediction = (label, prob)
-        print(f"[Predicción]  {label.upper()}  —  confianza: {prob*100:.1f}%")
-        notify(label, prob)
+    cv2.destroyAllWindows()
+
+# ── Entry point ───────────────────────────────────────────────────────────────
+if args.headless:
+    loop_headless()
+else:
+    loop_display()
 
 _stop = True
-cv2.destroyAllWindows()
