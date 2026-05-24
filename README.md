@@ -1,136 +1,138 @@
-```python
-readme_content = """# Sistema de Monitoreo de Plato de Mascotas con ESP32-CAM y Deep Learning (CNN)
+# 🐾 ESP32-CAM Pet Bowl Monitor
 
-Este repositorio contiene un sistema completo de Visión por Computadora y Edge-AI diseñado para clasificar el estado de un plato para perro (vacío o lleno - `empty` o `full`). El sistema está dividido en tres componentes principales: firmware embebido para adquisición y transmisión de imágenes, un script de automatización serial para control de visualización/recolección de datos y una tubería (*pipeline*) de entrenamiento para una Red Neuronal Convolucional (CNN).
+Sistema de visión por computadora que detecta si el plato de comida de tu mascota está **lleno o vacío** usando una ESP32-CAM y una red neuronal convolucional (CNN). Envía notificaciones automáticas a **Telegram**.
 
-## 🚀 Arquitectura General del Sistema
+---
 
-
-```
-
-```text
-Archivo README.md generado con éxito.
-
+## 🏗️ Arquitectura
 
 ```
-
-[ ESP32-CAM ] --(Streaming Serial @ 1.5 Mbps)--> [ Python / OpenCV Script ]
-|
-+--------------+--------------+
-|                             |
-(Modo Captura: Teclas E/F)      (Modo Inferencia: Tecla P)
-v                             v
-[ dataset/empty ]             [ modelo_bowl_perro.keras ]
-[ dataset/full  ]                      |
-|                             v
-+---> [ Entrenamiento CNN ] --+
-
+[ ESP32-CAM ] ──(WiFi / HTTP)──► [ Python + OpenCV ]
+                                          │
+                          ┌───────────────┴───────────────┐
+                          ▼                               ▼
+                 [ CNN (TensorFlow) ]            [ Telegram Bot ]
+                  empty / full + %            🔴 Vacío / 🟢 Lleno
 ```
 
 ---
 
-## 📂 Estructura de Archivos Recomendada
+## 📂 Estructura del proyecto
 
-Se recomienda organizar el proyecto de la siguiente manera:
-```text
-📦 proyecto-plato-esp32cam
- ┣ 📂 dataset
- ┃ ┣ 📂 empty                  # Imágenes del plato vacío
- ┃ ┗ 📂 full                   # Imágenes del plato lleno
- ┣ 📜 send_images_serial\send_images_serial.ino     # Código para el ESP32-CAM (Arduino IDE)
- ┣ 📜 train_model.py             # Script de entrenamiento de la red neuronal
- ┣ 📜 test_model.py      # Script de visualización, captura e inferencia en tiempo real
- ┣ 📜 modelo_bowl_perro.keras  # Modelo entrenado generado automáticamente
- ┗ 📜 README.md                # Este archivo de documentación
-
+```
+esp32-cam-pet-bowl/
+│
+├── get_images_wifi.py          # Script principal: stream + inferencia + Telegram
+├── train_model.py              # Entrenamiento de la CNN
+├── test_model.py               # Captura de dataset por puerto serial + inferencia
+├── test_serial.py              # Solo captura de dataset por puerto serial
+│
+├── config.example.py           # Plantilla de credenciales Python → copiar a config.py
+├── secrets.h.example           # Plantilla de credenciales Arduino → copiar a secrets.h
+├── requirements.txt            # Dependencias Python
+│
+├── send_images_wifi/           # Firmware ESP32: streaming por WiFi (HTTP)
+│   └── send_images_wifi.ino
+├── send_images_serial/         # Firmware ESP32: streaming por Serial (UART)
+│   └── send_images_serial.ino
+├── ver_ip/                     # Utilidad: muestra la IP del ESP32 en Serial Monitor
+│   └── ver_ip.ino
+│
+└── dataset/                    # Imágenes de entrenamiento (ignorado en git)
+    ├── empty/
+    └── full/
 ```
 
 ---
 
-## 🛠️ Componentes del Código
+## ⚙️ Instalación
 
-### 1. Firmware ESP32-CAM (`send_images_serial\send_images_serial.ino`)
-
-Configura el hardware del ESP32-CAM (sensor OV2640) para capturar imágenes en resolución **QQVGA (160x120)** en formato JPEG para optimizar el ancho de banda.
-
-* **Protocolo Custom de Comunicación**: Para evitar la corrupción de datos en ráfagas seriales de alta velocidad, las imágenes se empaquetan con un encabezado de sincronización rígido:
-1. `MAGIC_BYTES`: 4 bytes fijos (`0xA5, 0x5A, 0xA5, 0x5A`).
-2. `Length`: 4 bytes que representan el tamaño total del JPEG (en formato Little Endian).
-3. `Payload`: Los bytes crudos de la imagen JPEG comprimida.
-
-
-* **Velocidad de Transmisión**: Configurado a **1,500,000 baudios** para garantizar un flujo continuo (baja latencia).
-
-### 2. Script de Adquisición e Inferencia (`test_model.py`)
-
-Controla la comunicación serial bidireccional desde la PC y procesa los bytes entrantes mediante una máquina de estados de búfer para reconstruir las imágenes JPEG.
-
-* **Interfaz de Usuario Básica (OpenCV)**: Abre una ventana interactiva escalando la imagen x3 para facilitar el monitoreo humano.
-* **Control por Teclado**:
-* `e`: Guarda el cuadro actual dentro de la carpeta `dataset/empty` (etiquetado automático).
-* `f`: Guarda el cuadro actual dentro de la carpeta `dataset/full`.
-* `p`: Detiene momentáneamente el flujo, transforma el espacio de color (BGR a RGB), redimensiona y ejecuta el modelo cargado (`.keras`) para imprimir una predicción de probabilidad binaria.
-* `q`: Cierra los hilos de comunicación de forma segura.
-
-
-
-### 3. Pipeline de Entrenamiento de la CNN (`train_model.py`)
-
-Contiene la lógica de entrenamiento usando **TensorFlow 2.x / Keras**.
-
-* **Preprocesamiento Integrado**: Realiza divisiones automatizadas de Entrenamiento/Validación (80/20) y aplica técnicas de *Data Augmentation* (volteos aleatorios, rotación de hasta 20%, zoom y cambios dinámicos de brillo) directamente en capas de GPU para reducir el sobreajuste (*overfitting*).
-* **Arquitectura del Modelo**:
-* Capa de normalización (escala los píxeles de `[0, 255]` a `[0, 1]`).
-* 3 Bloques Convolucionales con filtros progresivos (16, 32, 64) de tamaño 3x3 y activaciones **ReLU**, acompañados de *Max Pooling* de 2x2.
-* Bloque clasificador denso con una capa de **Dropout al 50%** y una capa de salida con **función de activación Sigmoide** para una salida probabilística lineal de clase única.
-
-
-* **Métricas del Negocio**: Genera un reporte detallado con gráficas de evolución temporal de precisión/pérdida, además de una **Matriz de Confusión** y reportes de métricas avanzadas (*Precision, Recall, F1-Score*) usando Scikit-Learn.
-
----
-
-## 💻 Requisitos e Instalación
-
-### Hardware
-
-* Tarjeta de desarrollo **ESP32-CAM** (Ai-Thinker recomendado).
-* Cable / Programador FTDI USB a Serial.
-* Plato de comida para mascotas (para el entorno de pruebas).
-
-### Entorno de Software (Python 3.9 - 3.11 Recomendado)
-
-Instala las dependencias necesarias ejecutando en tu terminal:
+### 1. Clonar el repositorio
 
 ```bash
-pip install tensorflow opencv-python pyserial matplotlib scikit-learn numpy
-
+git clone https://github.com/tu-usuario/esp32-cam-pet-bowl.git
+cd esp32-cam-pet-bowl
 ```
+
+### 2. Instalar dependencias Python
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Configurar credenciales
+
+**Python** — copia y edita:
+```bash
+cp config.example.py config.py
+```
+Rellena en `config.py`:
+- `URL_CAM` → IP de tu ESP32 (usa `ver_ip.ino` para encontrarla)
+- `TG_TOKEN` → token de tu bot (obtenido con @BotFather)
+- `TG_CHAT_ID` → tu chat ID (obtenido con `/getUpdates`)
+
+**Arduino** — copia y edita:
+```bash
+cp secrets.h.example secrets.h
+```
+Rellena en `secrets.h`:
+- `WIFI_SSID` → nombre de tu red WiFi
+- `WIFI_PASS` → contraseña de tu red WiFi
 
 ---
 
-## 📋 Instrucciones de Operación paso a paso
+## 🚀 Uso
 
-### Paso 1: Recolección de Datos
+### Paso 1 — Flashear el ESP32
 
-1. Carga el código `send_images_serial\send_images_serial.ino` en tu ESP32-CAM usando el Arduino IDE (asegúrate de seleccionar la velocidad de consola correcta y los pines de tu placa).
-2. Verifica a qué puerto COM se conectó tu dispositivo (ej. `COM7` en Windows o `/dev/ttyUSB0` en Linux) y edita la variable `PORT` en tu script de Python (`test_model.py`).
-3. Ejecuta el script `test_model.py`.
-4. Coloca el plato vacío frente a la cámara en diferentes ángulos y luces, presiona la tecla `e` consecutivas veces para capturar al menos 100-200 imágenes.
-5. Llena el plato y repite el proceso presionando la tecla `f` para recolectar muestras llenas.
+Abre `send_images_wifi/send_images_wifi.ino` en el Arduino IDE y flashea tu ESP32-CAM.  
+Usa `ver_ip/ver_ip.ino` para confirmar la IP asignada y actualiza `config.py`.
 
-### Paso 2: Entrenamiento del Modelo
+### Paso 2 — Recolectar imágenes de entrenamiento (opcional si ya tienes modelo)
 
-1. Asegúrate de que las carpetas `dataset/empty` y `dataset/full` tengan imágenes válidas.
-2. Ejecuta el script de entrenamiento:
+```bash
+python test_serial.py    # Conecta el ESP32 por USB serial
+# Teclas: E = guardar empty | F = guardar full | Q = salir
+```
+
+### Paso 3 — Entrenar el modelo
+
 ```bash
 python train_model.py
-
+# Genera modelo_bowl_perro.keras al terminar
 ```
 
+### Paso 4 — Ejecutar el monitor en tiempo real
 
-3. Al finalizar, analiza las gráficas de entrenamiento. Si la brecha entre el entrenamiento y la validación es muy amplia, considera recolectar más datos. El archivo `modelo_bowl_perro.keras` se guardará automáticamente en la raíz.
+```bash
+python get_images_wifi.py
+# Teclas: ESPACIO = predecir y notificar por Telegram | Q = salir
+```
 
-### Paso 3: Inferencia en Tiempo Real
+---
 
-1. Vuelve a abrir tu script interactivo `test_model.py`. El script detectará y cargará automáticamente la red neuronal entrenada.
-2. Apunta la cámara al plato y presiona la tecla `p`. La consola imprimirá inmediatamente si el plato está **VACÍO** o **LLENO** junto con el porcentaje de certeza probabilística del modelo.
+## 🤖 Modelo CNN
+
+| Parámetro       | Valor                  |
+|-----------------|------------------------|
+| Resolución      | 160 × 120 px (QQVGA)   |
+| Clases          | `empty` / `full`       |
+| Arquitectura    | 3× Conv2D + MaxPooling |
+| Salida          | Sigmoide (binaria)     |
+| Data Augmentation | Flip, Rotación, Zoom, Brillo |
+
+---
+
+## 📦 Hardware necesario
+
+- ESP32-CAM (Ai-Thinker)
+- Programador FTDI (para flashear)
+- Red WiFi 2.4 GHz
+- Plato de comida para mascota 🐶
+
+---
+
+## 🔒 Seguridad
+
+Los archivos `config.py` y `secrets.h` están en `.gitignore` y **nunca se suben al repositorio**.  
+Usa siempre los archivos `.example` como referencia.

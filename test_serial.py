@@ -4,8 +4,7 @@ import time
 import numpy as np
 import cv2
 
-PORT = "COM7"
-BAUD = 1500000
+from config import SERIAL_PORT as PORT, SERIAL_BAUD as BAUD
 
 BASE_DIR = "dataset"
 EMPTY_DIR = os.path.join(BASE_DIR, "empty")

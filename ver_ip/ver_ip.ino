@@ -4,13 +4,11 @@
 */
 
 #include <WiFi.h>
-
-const char* SSID     = "IZZI-4E6E-5G";
-const char* PASSWORD = "509551214E6E";
+#include "../secrets.h"
 
 void setup() {
   Serial.begin(115200);
-  WiFi.begin(SSID, PASSWORD);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
   Serial.print("Conectando");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);

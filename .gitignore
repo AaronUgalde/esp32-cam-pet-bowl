@@ -1,12 +1,19 @@
+# === CREDENCIALES (¡NUNCA subir a git!) ===
+config.py
+secrets.h
+
+# === MODELO ENTRENADO ===
+# Pesa demasiado para git. Usa Git LFS o compártelo aparte.
+*.keras
+*.h5
+
 # === DATASET / IMÁGENES ===
-# Ignora toda la carpeta de imágenes que estás recopilando
 dataset/
 *.jpg
 *.jpeg
 *.png
 
 # === PYTHON ===
-# Archivos compilados y caché de Python
 __pycache__/
 *.pyc
 *.pyo
@@ -16,27 +23,22 @@ env/
 venv/
 .venv/
 pip-log.txt
-pip-delete-this-directory.txt
 .pytest_cache/
 .mypy_cache/
 
 # === ARDUINO / ESP32 ===
-# Archivos temporales de compilación
 build/
 bin/
 *.elf
 *.bin
 *.hex
 
-# === CONFIGURACIÓN DE EDITORES (IDE) ===
-# Visual Studio Code
+# === EDITORES ===
 .vscode/
 !.vscode/extensions.json
-
-# PyCharm / IntelliJ
 .idea/
 
-# Archivos del sistema operativo (p. ej. miniaturas de Windows)
+# === SISTEMA OPERATIVO ===
 Thumbs.db
 ehthumbs.db
 Desktop.ini
