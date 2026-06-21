@@ -8,7 +8,7 @@ secrets.h
 *.h5
 
 # === DATASET / IMÁGENES ===
-dataset/
+examples/dataset/
 *.jpg
 *.jpeg
 *.png

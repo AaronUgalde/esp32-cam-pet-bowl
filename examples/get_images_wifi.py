@@ -6,7 +6,7 @@ import threading
 import argparse
 import time
 
-from config import URL_CAM, TG_TOKEN, TG_CHAT_ID, PREDICT_INTERVAL
+from examples.config import URL_CAM, TG_TOKEN, TG_CHAT_ID, PREDICT_INTERVAL
 
 # ── Argumentos ────────────────────────────────────────────────────────────────
 parser = argparse.ArgumentParser(description="ESP32-CAM Pet Bowl Monitor")
@@ -80,7 +80,8 @@ def get_frame():
     return img
 
 def predict(img_bgr):
-    tensor = tf.expand_dims(tf.cast(img_bgr, tf.float32), axis=0)
+    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    tensor = tf.expand_dims(tf.cast(img_rgb, tf.float32), axis=0)
     prob   = float(model(tensor, training=False)[0, 0])
     label  = CLASS_NAMES[int(prob >= THRESHOLD)]
     return label, prob

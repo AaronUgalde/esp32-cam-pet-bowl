@@ -5,7 +5,7 @@ import numpy as np
 import cv2
 import tensorflow as tf
 
-from config import SERIAL_PORT as PORT, SERIAL_BAUD as BAUD
+from examples.config import SERIAL_PORT as PORT, SERIAL_BAUD as BAUD
 
 # Cargar el modelo entrenado
 print("Cargando modelo neuronal...")

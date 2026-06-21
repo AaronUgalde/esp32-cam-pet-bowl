@@ -1,138 +1,98 @@
-# 🐾 ESP32-CAM Pet Bowl Monitor
+# Robot patrullero para monitoreo de perro
 
-Sistema de visión por computadora que detecta si el plato de comida de tu mascota está **lleno o vacío** usando una ESP32-CAM y una red neuronal convolucional (CNN). Envía notificaciones automáticas a **Telegram**.
+Robot móvil que patrulla de forma autónoma, detecta ladridos, inspecciona el plato de comida con visión por computadora y envía notificaciones por Telegram.
 
----
+El código de referencia para la cámara y el modelo CNN está en [`examples/`](examples/) (ESP32-CAM, entrenamiento, monitor standalone).
 
-## 🏗️ Arquitectura
+Para probar sensores y el flujo con solo la ESP32 dev: [`debug/`](debug/).
 
-```
-[ ESP32-CAM ] ──(WiFi / HTTP)──► [ Python + OpenCV ]
-                                          │
-                          ┌───────────────┴───────────────┐
-                          ▼                               ▼
-                 [ CNN (TensorFlow) ]            [ Telegram Bot ]
-                  empty / full + %            🔴 Vacío / 🟢 Lleno
-```
+**Cableado completo** (sensores, baterías, resistencias): [`WIRING.md`](WIRING.md).
 
 ---
 
-## 📂 Estructura del proyecto
+## Arquitectura
+
+```
+[ PC: robot_controller.py ] ◄──WebSocket──► [ ESP32 dev: robot_hub ]
+        │ HTTP /cam.jpg                              │ UART
+        ▼                                            ▼
+ [ ESP32-CAM ]                              [ Arduino UNO #1: patrol_motors ]
+                                                    │
+                                              [ Motores + HC-SR04 ]
+```
+
+| Dispositivo | Firmware / script | Rol |
+|---|---|---|
+| PC | `robot_controller.py` | Estados, ML, Telegram, WebSocket server |
+| ESP32 dev | `robot_hub/robot_hub.ino` | Mic, MQ135, audio, puente WiFi |
+| Arduino UNO #1 | `patrol_motors/patrol_motors.ino` | Patrulla + parada por UART |
+| ESP32-CAM | `examples/send_images_wifi/` | Foto del plato (sin cambios) |
+
+---
+
+## Estructura del proyecto
 
 ```
 esp32-cam-pet-bowl/
-│
-├── get_images_wifi.py          # Script principal: stream + inferencia + Telegram
-├── train_model.py              # Entrenamiento de la CNN
-├── test_model.py               # Captura de dataset por puerto serial + inferencia
-├── test_serial.py              # Solo captura de dataset por puerto serial
-│
-├── config.example.py           # Plantilla de credenciales Python → copiar a config.py
-├── secrets.h.example           # Plantilla de credenciales Arduino → copiar a secrets.h
-├── requirements.txt            # Dependencias Python
-│
-├── send_images_wifi/           # Firmware ESP32: streaming por WiFi (HTTP)
-│   └── send_images_wifi.ino
-├── send_images_serial/         # Firmware ESP32: streaming por Serial (UART)
-│   └── send_images_serial.ino
-├── ver_ip/                     # Utilidad: muestra la IP del ESP32 en Serial Monitor
-│   └── ver_ip.ino
-│
-└── dataset/                    # Imágenes de entrenamiento (ignorado en git)
-    ├── empty/
-    └── full/
+├── robot_controller.py
+├── config.example.py         # Plantilla → copiar a config.py (único config Python)
+├── secrets.h.example         # Plantilla → copiar a secrets.h (único secrets Arduino)
+├── requirements.txt
+├── robot_hub/robot_hub.ino
+├── patrol_motors/patrol_motors.ino
+└── examples/                 # Scripts y firmware ESP32-CAM
 ```
 
 ---
 
-## ⚙️ Instalación
+## Configuración (un solo archivo de cada uno)
 
-### 1. Clonar el repositorio
+Todos los scripts Python y todos los firmwares ESP32 comparten **los mismos archivos en la raíz**:
 
-```bash
-git clone https://github.com/tu-usuario/esp32-cam-pet-bowl.git
-cd esp32-cam-pet-bowl
-```
-
-### 2. Instalar dependencias Python
-
-```bash
-pip install -r requirements.txt
-```
-
-### 3. Configurar credenciales
-
-**Python** — copia y edita:
 ```bash
 cp config.example.py config.py
-```
-Rellena en `config.py`:
-- `URL_CAM` → IP de tu ESP32 (usa `ver_ip.ino` para encontrarla)
-- `TG_TOKEN` → token de tu bot (obtenido con @BotFather)
-- `TG_CHAT_ID` → tu chat ID (obtenido con `/getUpdates`)
-
-**Arduino** — copia y edita:
-```bash
 cp secrets.h.example secrets.h
 ```
-Rellena en `secrets.h`:
-- `WIFI_SSID` → nombre de tu red WiFi
-- `WIFI_PASS` → contraseña de tu red WiFi
+
+| Archivo | Qué contiene | Quién lo usa |
+|---------|--------------|--------------|
+| **`config.py`** | Telegram, URL cámara, WebSocket, MQ135, serial, modelo | `robot_controller.py`, `mock_controller.py`, `examples/*` |
+| **`secrets.h`** | WiFi (`WIFI_SSID`, `WIFI_PASS`) + IP PC (`WS_HOST`, `WS_PORT`) | `robot_hub`, `hub_simulated`, `send_images_wifi`, `ver_ip` |
+
+**`config.py`:** `URL_CAM`, `TG_TOKEN`, `TG_CHAT_ID`, `WS_BIND_HOST`, `AIR_THRESHOLD`, `SERIAL_PORT`, etc.
+
+**`secrets.h`:** misma red WiFi para **todos** los ESP32; `WS_HOST` = IP de tu PC (`ipconfig`), sin espacios.
+
+Los scripts en `examples/` importan el `config.py` de la raíz automáticamente (no hace falta otro `config.py` ahí).
+
+**Modelo CNN:** entrena con `examples/train_model.py` y coloca `modelo_bowl_perro.keras` en la raíz.
 
 ---
 
-## 🚀 Uso
+## Flashear firmware
 
-### Paso 1 — Flashear el ESP32
+1. `patrol_motors/patrol_motors.ino` → Arduino UNO #1
+2. `robot_hub/robot_hub.ino` → ESP32 dev board  
+   Librerías: WebSockets, ArduinoJson, DFRobotDFPlayerMini
+3. `examples/send_images_wifi/send_images_wifi.ino` → ESP32-CAM
 
-Abre `send_images_wifi/send_images_wifi.ino` en el Arduino IDE y flashea tu ESP32-CAM.  
-Usa `ver_ip/ver_ip.ino` para confirmar la IP asignada y actualiza `config.py`.
+## Alimentación y cableado
 
-### Paso 2 — Recolectar imágenes de entrenamiento (opcional si ya tienes modelo)
+- Resumen de baterías: [POWER.md](POWER.md)
+- **Guía detallada de sensores, pilas y resistencias:** [WIRING.md](WIRING.md)
+
+---
+
+## Ejecutar
 
 ```bash
-python test_serial.py    # Conecta el ESP32 por USB serial
-# Teclas: E = guardar empty | F = guardar full | Q = salir
+python robot_controller.py
 ```
 
-### Paso 3 — Entrenar el modelo
-
-```bash
-python train_model.py
-# Genera modelo_bowl_perro.keras al terminar
-```
-
-### Paso 4 — Ejecutar el monitor en tiempo real
-
-```bash
-python get_images_wifi.py
-# Teclas: ESPACIO = predecir y notificar por Telegram | Q = salir
-```
+Flujo: patrulla → ladrido → STOP → Telegram → foto del plato → CNN → Telegram → audio (si plato lleno y aire OK) → sesión termina. **No reanuda la patrulla** hasta reiniciar robot y script.
 
 ---
 
-## 🤖 Modelo CNN
+## Seguridad
 
-| Parámetro       | Valor                  |
-|-----------------|------------------------|
-| Resolución      | 160 × 120 px (QQVGA)   |
-| Clases          | `empty` / `full`       |
-| Arquitectura    | 3× Conv2D + MaxPooling |
-| Salida          | Sigmoide (binaria)     |
-| Data Augmentation | Flip, Rotación, Zoom, Brillo |
-
----
-
-## 📦 Hardware necesario
-
-- ESP32-CAM (Ai-Thinker)
-- Programador FTDI (para flashear)
-- Red WiFi 2.4 GHz
-- Plato de comida para mascota 🐶
-
----
-
-## 🔒 Seguridad
-
-Los archivos `config.py` y `secrets.h` están en `.gitignore` y **nunca se suben al repositorio**.  
-Usa siempre los archivos `.example` como referencia.
+`config.py` y `secrets.h` están en `.gitignore` (solo en la raíz del repo).

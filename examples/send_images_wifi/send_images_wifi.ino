@@ -1,7 +1,7 @@
 #include <esp32cam.h>
 #include <WebServer.h>
 #include <WiFi.h>
-#include "../secrets.h"
+#include "../../secrets.h"
 // WIFI_SSID y WIFI_PASS se usan directamente desde secrets.h
 
 WebServer server(80);

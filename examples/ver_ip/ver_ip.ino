@@ -4,7 +4,7 @@
 */
 
 #include <WiFi.h>
-#include "../secrets.h"
+#include "../../secrets.h"
 
 void setup() {
   Serial.begin(115200);
