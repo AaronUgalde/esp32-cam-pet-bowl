@@ -24,7 +24,8 @@ Para probar sensores y el flujo con solo la ESP32 dev: [`debug/`](debug/).
 | Dispositivo | Firmware / script | Rol |
 |---|---|---|
 | PC | `robot_controller.py` | Estados, ML, Telegram, WebSocket server |
-| ESP32 dev | `robot_hub/robot_hub.ino` | Mic, MQ135, audio, puente WiFi |
+| ESP32 dev | `robot_hub/` **o** `esp32_bridge/` | Ver abajo |
+| Arduino UNO #2 (opcional) | `sensor_board/` | Solo arquitectura dividida |
 | Arduino UNO #1 | `patrol_motors/patrol_motors.ino` | Patrulla + parada por UART |
 | ESP32-CAM | `examples/send_images_wifi/` | Foto del plato (sin cambios) |
 
@@ -38,8 +39,11 @@ esp32-cam-pet-bowl/
 ├── config.example.py         # Plantilla → copiar a config.py (único config Python)
 ├── secrets.h.example         # Plantilla → copiar a secrets.h (único secrets Arduino)
 ├── requirements.txt
-├── robot_hub/robot_hub.ino
+├── robot_hub/robot_hub.ino     # Variante A: sensores en ESP32
+├── esp32_bridge/               # Variante B: ESP32 solo WiFi
+├── sensor_board/               # Variante B: UNO #2 sensores + MP3
 ├── patrol_motors/patrol_motors.ino
+├── SPLIT_ARCHITECTURE.md       # Guía variante B
 └── examples/                 # Scripts y firmware ESP32-CAM
 ```
 
@@ -67,14 +71,33 @@ Los scripts en `examples/` importan el `config.py` de la raíz automáticamente 
 
 **Modelo CNN:** entrena con `examples/train_model.py` y coloca `modelo_bowl_perro.keras` en la raíz.
 
+### Dos formas de usar la ESP32 dev
+
+| Variante | ESP32 | Sensores + MP3 | Cuándo |
+|----------|-------|----------------|--------|
+| **A — Integrada** | [`robot_hub/`](robot_hub/) | En la misma ESP32 (GPIO 32/34/35) | Pines libres en la ESP32 |
+| **B — Dividida** | [`esp32_bridge/`](esp32_bridge/) | Arduino UNO #2 [`sensor_board/`](sensor_board/) (como `senores_example.ino`) | Sin sensores en la ESP32 |
+
+Detalle de la variante B: [`SPLIT_ARCHITECTURE.md`](SPLIT_ARCHITECTURE.md).
+
 ---
 
 ## Flashear firmware
 
-1. `patrol_motors/patrol_motors.ino` → Arduino UNO #1
-2. `robot_hub/robot_hub.ino` → ESP32 dev board  
-   Librerías: WebSockets, ArduinoJson, DFRobotDFPlayerMini
-3. `examples/send_images_wifi/send_images_wifi.ino` → ESP32-CAM
+**Arquitectura A (todo en ESP32 dev + UNO motores):**
+
+1. `patrol_motors/patrol_motors.ino` → Arduino UNO #1  
+2. `robot_hub/robot_hub.ino` → ESP32 dev  
+3. `examples/send_images_wifi/send_images_wifi.ino` → ESP32-CAM  
+
+**Arquitectura B (ESP32 solo WiFi + UNO sensores):**
+
+1. `patrol_motors/patrol_motors.ino` → Arduino UNO #1  
+2. `sensor_board/sensor_board.ino` → Arduino UNO #2  
+3. `esp32_bridge/esp32_bridge.ino` → ESP32 dev  
+4. `examples/send_images_wifi/send_images_wifi.ino` → ESP32-CAM  
+
+Librerías Arduino (ESP32): WebSockets, ArduinoJson. En UNO #2: DFRobotDFPlayerMini.
 
 ## Alimentación y cableado
 

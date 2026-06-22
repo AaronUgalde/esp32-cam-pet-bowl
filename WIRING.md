@@ -432,6 +432,7 @@ Antes de encender todo conectado:
 
 | Documento | Contenido |
 |-----------|-----------|
+| [`SPLIT_ARCHITECTURE.md`](SPLIT_ARCHITECTURE.md) | ESP32 solo WiFi + Arduino UNO sensores |
 | [`POWER.md`](POWER.md) | Baterías, buck, consumos, checklist |
 | [`CALIBRATION.md`](CALIBRATION.md) | Umbral MQ135 |
 | [`debug/SENSORS.md`](debug/SENSORS.md) | Arduino UNO vs ESP32 (software) |
@@ -446,7 +447,8 @@ Antes de encender todo conectado:
 |----------|----------|
 | 1 | ESP32 dev board |
 | 1 | ESP32-CAM (Ai-Thinker) |
-| 1 | Arduino UNO + shield H-bridge |
+| 1 | Arduino UNO + shield H-bridge (motores) |
+| 1 | Arduino UNO #2 opcional (solo variante B — sensores) |
 | 1 | Módulo micrófono (KY-037/038 o similar) |
 | 1 | Módulo MQ135 |
 | 1 | DFPlayer Mini MP3-TF-16P |
@@ -458,3 +460,15 @@ Antes de encender todo conectado:
 | 1 | Resistencia **1 kΩ** (DFPlayer RX) |
 | 2 | Resistencias **10 kΩ + 20 kΩ** (solo si AO > 3.3 V) |
 | — | Cable dupont, bridas, interruptor, fusibles opcionales |
+
+---
+
+## 17. Variante B: sensores en Arduino UNO #2
+
+Si usas [`esp32_bridge/`](esp32_bridge/) + [`sensor_board/`](sensor_board/) en lugar de `robot_hub/`:
+
+- **Mic, MQ135, MP3** van al UNO #2 con los **mismos pines** que [`examples/senores_example.ino`](examples/senores_example.ino) (D2, A0, A1, D8, D9).
+- **UART UNO #2 ↔ ESP32:** D6 (RX) / D7 (TX) ↔ GPIO 18/19.
+- La ESP32 **no** usa GPIO 32/34/35 para sensores.
+
+Ver [`SPLIT_ARCHITECTURE.md`](SPLIT_ARCHITECTURE.md).
