@@ -23,9 +23,10 @@
 const int MOTOR_RX = 16;
 const int MOTOR_TX = 17;
 
-// Serial2 → sensor board
+// Serial2 → sensor board (57600: UNO SoftwareSerial pierde bytes a 115200)
 const int SENSOR_RX = 18;
 const int SENSOR_TX = 19;
+const long SENSOR_BAUD = 57600;
 
 WebSocketsClient webSocket;
 HardwareSerial sensorSerial(2);
@@ -45,7 +46,47 @@ void sendStopToMotor() {
 }
 
 void sendToSensor(const char *json) {
+  Serial.print(F("[SENSOR TX] "));
+  Serial.println(json);
   sensorSerial.println(json);
+  sensorSerial.flush();
+}
+
+void forwardWsPayloadToSensor(uint8_t *payload, size_t length) {
+  StaticJsonDocument<128> doc;
+  DeserializationError err = deserializeJson(doc, payload, length);
+
+  if (!err) {
+    const char *cmd = doc["cmd"];
+    if (cmd) {
+      if (strcmp(cmd, "stop") == 0) {
+        sendStopToMotor();
+        sendToSensor("{\"cmd\":\"stop\"}");
+        return;
+      }
+      if (strcmp(cmd, "play_audio") == 0) {
+        String out;
+        serializeJson(doc, out);
+        sendToSensor(out.c_str());
+        return;
+      }
+      if (strcmp(cmd, "ping") == 0) {
+        sendToSensor("{\"cmd\":\"ping\"}");
+        return;
+      }
+    }
+  } else {
+    Serial.println(F("[WS] JSON invalido, reenvio crudo al sensor"));
+  }
+
+  // Fallback: reenviar texto tal cual (por si el parseo falla)
+  String raw;
+  raw.reserve(length + 1);
+  for (size_t i = 0; i < length; i++) raw += (char)payload[i];
+  if (raw.indexOf("play_audio") >= 0 || raw.indexOf("\"ping\"") >= 0 ||
+      raw.indexOf("\"stop\"") >= 0) {
+    sendToSensor(raw.c_str());
+  }
 }
 
 void forwardToPc(const char *json) {
@@ -69,6 +110,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       wsConnected = true;
       wsEverConnected = true;
       Serial.println(F("[WS] Conectado a PC"));
+      sendToSensor("{\"cmd\":\"ping\"}");
       break;
 
     case WStype_ERROR:
@@ -79,23 +121,7 @@ void webSocketEvent(WStype_t type, uint8_t *payload, size_t length) {
       Serial.print(F("[WS RX] "));
       Serial.write(payload, length);
       Serial.println();
-
-      StaticJsonDocument<128> doc;
-      if (deserializeJson(doc, payload, length)) break;
-
-      const char *cmd = doc["cmd"];
-      if (!cmd) break;
-
-      if (strcmp(cmd, "stop") == 0) {
-        sendStopToMotor();
-        sendToSensor("{\"cmd\":\"stop\"}");
-      } else if (strcmp(cmd, "play_audio") == 0) {
-        String out;
-        serializeJson(doc, out);
-        sendToSensor(out.c_str());
-      } else if (strcmp(cmd, "ping") == 0) {
-        sendToSensor("{\"cmd\":\"ping\"}");
-      }
+      forwardWsPayloadToSensor(payload, length);
       break;
     }
 
@@ -154,12 +180,12 @@ void readSensorUart() {
 void setup() {
   Serial.begin(115200);
   Serial1.begin(115200, SERIAL_8N1, MOTOR_RX, MOTOR_TX);
-  sensorSerial.begin(115200, SERIAL_8N1, SENSOR_RX, SENSOR_TX);
+  sensorSerial.begin(SENSOR_BAUD, SERIAL_8N1, SENSOR_RX, SENSOR_TX);
 
   Serial.println(F("\n=== esp32_bridge (solo WiFi) ==="));
   Serial.println(F("Sensores en Arduino UNO #2 (sensor_board)"));
-  Serial.printf("  Motores UART1 RX=%d TX=%d\n", MOTOR_RX, MOTOR_TX);
-  Serial.printf("  Sensores UART2 RX=%d TX=%d\n", SENSOR_RX, SENSOR_TX);
+  Serial.printf("  Motores UART1 RX=%d TX=%d @ 115200\n", MOTOR_RX, MOTOR_TX);
+  Serial.printf("  Sensores UART2 RX=%d TX=%d @ %ld\n", SENSOR_RX, SENSOR_TX, SENSOR_BAUD);
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);

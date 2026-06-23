@@ -56,7 +56,7 @@ flowchart LR
 | GPIO **18** (RX) | Pin **7** (TX) |
 | GND | GND |
 
-Baud: **115200**, JSON por línea.
+Baud: **57600** (UNO #2 ↔ ESP32; SoftwareSerial no es fiable a 115200 con MP3 activo). Motores siguen a **115200**.
 
 ### ESP32 bridge ↔ Arduino motores (UNO #1)
 

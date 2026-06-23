@@ -32,8 +32,10 @@ DFRobotDFPlayerMini mp3Player;
 
 // ── UART → ESP32 bridge ──────────────────────────────────────────
 SoftwareSerial linkEsp(6, 7);
+// 57600: SoftwareSerial del UNO pierde bytes a 115200 con MP3 activo
+const long LINK_BAUD = 57600;
 
-const int  UMBRAL_PICO    = 200;
+const int  UMBRAL_PICO    = 370;
 const int  MIC_DO_MIN_AO  = 30;
 const int  COOLDOWN       = 2000;
 const long HEARTBEAT_MS   = 5000;
@@ -43,6 +45,7 @@ enum BoardMode { MONITORING, BRIDGE_MODE };
 BoardMode mode = MONITORING;
 
 bool mp3Ready = false;
+bool mp3Playing = false;
 unsigned long ultimoPico = 0;
 unsigned long ultimoHeartbeat = 0;
 unsigned long ultimoLED = 0;
@@ -87,36 +90,57 @@ void onBark(int micAo, int micDo, int mq135) {
 
   emitEvent("bark", mq135, micAo, micDo);
   emitStopped("bark");
-  Serial.printf(F("[BARK] air=%d mic_ao=%d\n"), mq135, micAo);
+  Serial.print(F("[BARK] air="));
+  Serial.print(mq135);
+  Serial.print(F(" mic_ao="));
+  Serial.println(micAo);
+}
+
+int parseTrackFromJson(const String &line) {
+  int track = 1;
+  int idx = line.indexOf("\"track\"");
+  if (idx >= 0) {
+    int colon = line.indexOf(':', idx);
+    if (colon >= 0) track = line.substring(colon + 1).toInt();
+  }
+  return track < 1 ? 1 : track;
 }
 
 void playTrack(int track) {
   if (!mp3Ready) {
+    Serial.println(F("[MP3] No disponible"));
     emitEvent("audio_error", -1, -1, -1);
     return;
   }
+  linkEsp.listen();
+  mp3Serial.listen();
   mp3Player.volume(20);
   delay(150);
   mp3Player.play(track);
+  mp3Playing = true;
+  Serial.print(F("[MP3] Play 000"));
+  Serial.print(track);
+  Serial.println(F(".mp3"));
+  linkEsp.listen();
   emitEvent("audio_played", analogRead(MQ135_AO), -1, -1);
 }
 
 void processCommand(const String &line) {
-  if (line.indexOf("\"play_audio\"") >= 0) {
-    int track = 1;
-    int idx = line.indexOf("\"track\"");
-    if (idx >= 0) {
-      int colon = line.indexOf(':', idx);
-      if (colon >= 0) track = line.substring(colon + 1).toInt();
-      if (track < 1) track = 1;
-    }
-    playTrack(track);
-  } else if (line.indexOf("\"ping\"") >= 0) {
+  // Acepta {"cmd":"play_audio",...} con o sin espacios
+  if (line.indexOf("play_audio") >= 0) {
+    playTrack(parseTrackFromJson(line));
+  } else if (line.indexOf("\"cmd\":\"ping\"") >= 0 || line.endsWith("ping\"}")) {
     emitEvent("pong", analogRead(MQ135_AO), analogRead(MIC_AO), digitalRead(MIC_DO));
+  } else if (line.indexOf("\"cmd\":\"stop\"") >= 0) {
+    Serial.println(F("[CMD] stop (ignorado en sensor board)"));
+  } else {
+    Serial.print(F("[CMD] desconocido: "));
+    Serial.println(line);
   }
 }
 
 void readUartFromEsp() {
+  linkEsp.listen();
   while (linkEsp.available()) {
     char c = linkEsp.read();
     if (c == '\n' || c == '\r') {
@@ -134,40 +158,56 @@ void readUartFromEsp() {
 }
 
 void pollMp3() {
-  if (!mp3Ready || !mp3Player.available()) return;
-  uint8_t t = mp3Player.readType();
-  int v = mp3Player.read();
-  if (t == DFPlayerPlayFinished) {
-    Serial.printf("MP3 pista %d terminada\n", v);
+  if (!mp3Ready || !mp3Playing) return;
+  mp3Serial.listen();
+  if (mp3Player.available() && mp3Player.readType() == DFPlayerPlayFinished) {
+    Serial.println(F("[MP3] Pista terminada"));
+    mp3Player.read();
+    mp3Playing = false;
   }
+  linkEsp.listen();
 }
 
 // ── Setup / loop ────────────────────────────────────────────────
 void setup() {
   Serial.begin(115200);
-  linkEsp.begin(115200);
 
   pinMode(MIC_DO, INPUT);
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
+  // Inicializar MP3 antes que linkEsp (mismo orden que sensor_usb.ino).
   mp3Serial.begin(9600);
+  mp3Serial.listen();
   delay(1500);
   if (mp3Player.begin(mp3Serial)) {
     mp3Ready = true;
-    Serial.println(F("[MP3] Listo"));
+    Serial.println(F("[MP3] OK"));
   } else {
-    Serial.println(F("[MP3] No detectado"));
+    Serial.println(F("[MP3] No detectado (sensores siguen funcionando)"));
   }
 
+  linkEsp.begin(LINK_BAUD);
+  linkEsp.listen();
+
   Serial.println(F("=== sensor_board (UNO #2) ==="));
+  Serial.print(F("UART ESP32 @ "));
+  Serial.println(LINK_BAUD);
   Serial.println(F("Pines como senores_example.ino + UART D6/D7 → ESP32"));
+  Serial.println(F("Tecla USB 'a' = probar MP3 sin PC"));
   delay(500);
   emitEvent("hello", analogRead(MQ135_AO), analogRead(MIC_AO), digitalRead(MIC_DO));
   ultimoHeartbeat = millis();
 }
 
 void loop() {
+  if (Serial.available()) {
+    char c = Serial.read();
+    if (c == 'a' || c == 'A') {
+      playTrack(1);
+    }
+  }
+
   readUartFromEsp();
   pollMp3();
 
@@ -191,5 +231,7 @@ void loop() {
     emitEvent("heartbeat", mq135, micAo, micDo);
   }
 
-  delay(50);
+  readUartFromEsp();
+  linkEsp.listen();
+  delay(10);
 }

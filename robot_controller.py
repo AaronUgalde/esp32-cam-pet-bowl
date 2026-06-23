@@ -111,6 +111,10 @@ class RobotController:
 
     async def handle_bark(self, air: int) -> None:
         if self.state != State.PATROLLING:
+            log.warning(
+                "Ladrido ignorado — estado=%s (reinicia robot_controller.py o pulsa reset en UNO #2)",
+                self.state.name,
+            )
             return
 
         self.state = State.ALERT
@@ -150,7 +154,7 @@ class RobotController:
         air_ok = self.bark_air <= AIR_THRESHOLD
         if label == "full" and air_ok:
             self.state = State.PLAYING_AUDIO
-            log.info("Reproduciendo audio (plato lleno, aire OK)")
+            log.info("Enviando play_audio al ESP32 (plato lleno, aire=%d <= %d)", self.bark_air, AIR_THRESHOLD)
             await self.send_esp({"cmd": "play_audio", "track": AUDIO_TRACK})
             self.send_telegram("🔊 *Audio reproducido* — voz del dueño enviada al robot.")
         elif label == "full" and not air_ok:
@@ -184,17 +188,25 @@ class RobotController:
             await self.handle_bark(air)
         elif event == "hello":
             log.info("ESP32 hub conectado (aire inicial=%s)", data.get("air"))
+            if self.state == State.SESSION_END:
+                self.state = State.PATROLLING
+                log.info("Estado reseteado → PATROLLING (hello del sensor board)")
         elif event == "audio_played":
             log.info("ESP32 confirmó reproducción de audio")
         elif event == "stopped":
             log.info("Robot detenido (%s)", data.get("reason", ""))
-        elif event in ("pong", "audio_error"):
-            log.debug("Evento ESP32: %s", event)
+        elif event == "pong":
+            log.info("Pong del sensor board (UART ESP32→UNO OK)")
+        elif event == "audio_error":
+            log.warning("Sensor board: error al reproducir MP3")
 
     async def client_handler(self, websocket):
         remote = websocket.remote_address
         log.info("Cliente WebSocket conectado: %s", remote)
         self.esp_socket = websocket
+        if self.state == State.SESSION_END:
+            self.state = State.PATROLLING
+            log.info("Estado reseteado → PATROLLING (nueva conexión ESP32)")
         try:
             async for message in websocket:
                 await self.handle_message(message)

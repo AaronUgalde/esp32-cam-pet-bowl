@@ -6,6 +6,8 @@ El código de referencia para la cámara y el modelo CNN está en [`examples/`](
 
 Para probar sensores y el flujo con solo la ESP32 dev: [`debug/`](debug/).
 
+**Sin carrito** (UNO sensores + ESP32 dev + ESP32-CAM): [`debug/bench/README.md`](debug/bench/README.md).
+
 **Cableado completo** (sensores, baterías, resistencias): [`WIRING.md`](WIRING.md).
 
 ---

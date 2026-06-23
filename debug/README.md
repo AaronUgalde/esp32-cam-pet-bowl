@@ -118,6 +118,8 @@ python debug/read_serial_hub.py COM7
 
 Cuando todo pase, flashea `robot_hub/robot_hub.ino` y usa `robot_controller.py` en producción.
 
+**Sin carrito:** pruebas por piezas en [`bench/README.md`](bench/README.md).
+
 ---
 
 ## Problemas frecuentes
